@@ -1,0 +1,4 @@
+*.pdf
+.Python
+data/
+*.pth
