@@ -9,7 +9,7 @@ from torchvision import transforms as transforms
 import matplotlib.pyplot as plt
 import json
 
-logger = True
+logger = False
 
 class LVISData(data.Dataset):
     
