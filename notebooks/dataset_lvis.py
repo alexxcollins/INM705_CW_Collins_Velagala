@@ -19,8 +19,7 @@ logger = True
 """
 TODO:
 idx_to_img: load negative set  - for eval metrics??
-get_labels: update to return masks 
-visualize masks - custom? 
+add transforms in load image method when stage = train? 
 
 """
 
@@ -176,39 +175,14 @@ class LVISData(data.Dataset):
         
         fname = str(img_id).zfill(12) + '.jpg'
         path = self.imgs_dir + '/' + fname
-        img = np.array(PILImage.open(path))
-        tfrm = transforms.Compose([ transforms.ToPILImage(),  transforms.ToTensor()])
+        img = PILImage.open(path).convert("RGB")
+        
+        tfrm = transforms.Compose([transforms.ToTensor()])
         img = tfrm(img)
         return img 
     
     
-    """
-    Given image index and class ids, 
-    returns dictionary of classes (keys) and bounding boxes (list of tuples)
-    {'a': [[x1,y1,x2,y2], [x1,y1,x2,y2]], 'b' : [[x1,...]]}
-    """
-
-    def get_bounding_boxes(self, idx, classes):
-        
-        ann_ids = self.idx_ann_map.get(idx)
-        annotations = self.ann_data['annotations']
-        classes = list(self.classes.values())
-        
-        class_bboxes_dict = defaultdict(list)
-    
-        
-        for ann_id in ann_ids:
-            ann = annotations[ann_id -1]            
-            ann_class = ann['category_id']
-            
-            if ann_class in classes:
-                x, y, w, h  = ann['bbox']
-                xmax = x + w 
-                ymax = y + h 
-                class_bboxes_dict[ann_class].append([(x,y, xmax, ymax)])
- 
-        return class_bboxes_dict
-
+  
     """
     Given an ann_idx bounding box as a list of coords
     """
@@ -270,17 +244,28 @@ class LVISData(data.Dataset):
                 
                 bboxes.append(bbox)
                 masks.append(mask)
+                
+                ##remove this later 
+                #temp = {959: 1, 982: 2}
+                #ann_class = temp[ann_class]
+                
+                
                 inst_classes.append(ann_class)
             
         bboxes_t = torch.tensor(bboxes, dtype = torch.float)
         masks_t = torch.tensor(masks, dtype = torch.uint8)
-        classes_t = torch.tensor(inst_classes, dtype = torch.int)
+        classes_t = torch.tensor(inst_classes, dtype = torch.int64)
         
         all_labels = {} 
         
-        all_labels['bboxes'] = bboxes_t
+        #all_labels['bboxes'] = bboxes_t
+        #all_labels['masks'] = masks_t
+        #all_labels['classes'] = classes_t
+        
+        all_labels['boxes'] = bboxes_t
         all_labels['masks'] = masks_t
-        all_labels['classes'] = classes_t
+        all_labels['labels'] = classes_t
+
 
         return all_labels
 
@@ -299,9 +284,42 @@ class LVISData(data.Dataset):
         path = self.imgs_dir + '/' + fname
         return PILImage.open(path)
     
+
+    
     """
-    Given index and bounding boxes (list of lists), 
-    plots both 
+    Plots image with bounding boxes and annotations
+    """
+    def plot_img_with_ann(self, idx, bboxes = False, segs = True):
+        
+        ax = plt.gca()
+        ax.axis('off')
+        ann_ids = self.idx_ann_map.get(idx)
+        annotations = self.ann_data['annotations']
+        
+        
+        #plots image
+        plt.imshow(self.plot_img(idx))
+        
+        if bboxes:
+            for ann_id in ann_ids:
+                b = self.get_bboxes_by_ann(ann_id)
+                rect = Rectangle((b[0],b[1]), b[2]-b[0], b[3]-b[1], linewidth=2, edgecolor='r', facecolor='none')
+                ax.add_patch(rect)
+                
+        if segs:
+            for ann_id in ann_ids:            
+                m = self.get_mask(idx, ann_id)
+                img = np.ones( (m.shape[0], m.shape[1], 3) )
+                color_mask = np.random.random((1, 3)).tolist()[0] #np.array([2.0,166.0,101.0])/255
+                for i in range(3):
+                    img[:,:,i] = color_mask[i]
+                ax.imshow(np.dstack( (img, m*0.5) ))
+                
+        plt.show()
+        
+    """
+    Given index and bounding boxes (list of lists), plots both
+    (used for test time - loads image and predicted bounding boxes)
     """
     
     def plot_img_bboxes(self,idx, bboxes):
@@ -311,22 +329,25 @@ class LVISData(data.Dataset):
         path = self.imgs_dir + '/' + fname
         im = PILImage.open(path)
         
-        if bboxes:
+        
+        if len(bboxes) > 0:
             plt.imshow(im)
-            ax = plt.gca()
+            ax = plt.gca()        
+            ax.axis('off')
             for id, b in enumerate(bboxes):
-                b = b[0] #get tuple
+                #b = b[0] #get tuple
                 rect = Rectangle((b[0],b[1]), b[2]-b[0], b[3]-b[1], linewidth=2, edgecolor='r', facecolor='none')
                 ax.add_patch(rect)
             
         plt.show()
         return 
-    
+
+
     """
     Number of images class instantiated with 
     """
     def __len__(self):
-         return len(val_data.idx_img_map)
+         return len(self.idx_img_map)
 
     """
     magic method for iterating class items
@@ -335,12 +356,40 @@ class LVISData(data.Dataset):
          X = self.load_img(idx)
          y = self.get_label(idx) 
          return X,y
+        
+    
+    
+    ##############DONT NEED THIS ANYMORE###########################33
+        
+    """
+    Given image index and class ids, 
+    returns dictionary of classes (keys) and bounding boxes (list of tuples)
+    {'a': [[x1,y1,x2,y2], [x1,y1,x2,y2]], 'b' : [[x1,...]]}
+    """
 
+    def get_bounding_boxes(self, idx, classes):
+        
+        ann_ids = self.idx_ann_map.get(idx)
+        annotations = self.ann_data['annotations']
+        classes = list(self.classes.values())
+        
+        class_bboxes_dict = defaultdict(list)
     
-    
         
-        
-        
+        for ann_id in ann_ids:
+            ann = annotations[ann_id -1]            
+            ann_class = ann['category_id']
+            
+            if ann_class in classes:
+                x, y, w, h  = ann['bbox']
+                xmax = x + w 
+                ymax = y + h 
+                class_bboxes_dict[ann_class].append([(x,y, xmax, ymax)])
+ 
+        return class_bboxes_dict
+
+
+  
     
         
 
