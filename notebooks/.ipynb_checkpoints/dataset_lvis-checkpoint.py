@@ -1,5 +1,4 @@
 import os,sys
-from pathlib import Path
 import re
 import numpy as np
 from PIL import Image as PILImage
@@ -20,25 +19,19 @@ logger = True
 """
 TODO:
 idx_to_img: load negative set  - for eval metrics??
-get_labels: update to return masks DONE??
+get_labels: update to return masks 
 visualize masks - custom? 
-
-LVIS annotion file 
 
 """
 
 class LVISData(data.Dataset):
     
     def __init__(self, **kwargs):
-        # attribute for train, val, test
         self.stage = kwargs['stage']
-        # data set path
         self.ds_path = kwargs['ds_path']
-        # labels json file
         self.labels_f = kwargs['ds_path'] \
                     + kwargs['labels_dir'] +  \
                     '/lvis_v1_{}.json'.format(self.stage)
-        # images directory
         self.imgs_dir = kwargs['ds_path'] + \
                         kwargs['images_dir'] + \
                         '/{}2017'.format(self.stage)
@@ -80,18 +73,14 @@ class LVISData(data.Dataset):
         idx_img_map = {} 
         
         #all images in current stage
-        stg_imgs = [f for f in os.listdir(self.imgs_dir) 
-                    if not f.startswith('.')]
-        # return list of int img ids from file name
-        stg_imgs = [int(stg_imgs[x].split('.')[0].lstrip('0')) 
-                    for x in range(0,len(stg_imgs))]
-        # can do this in one line with pathlib:
-        # stg_imgs = [int(im.stem) for im in Path(self.imgs_dir).glob("[!.]*")]
+        
+        stg_imgs = [f for f in os.listdir(self.imgs_dir) if not f.startswith('.')]
+        stg_imgs = [int(stg_imgs[x].split('.')[0].lstrip('0')) for x in range(0,len(stg_imgs))]
+        
         
         #load positive set 
         imgs = [] 
         anns = self.ann_data['annotations']
-        # self.classes.values() is just list of class idx's we've chosen
         classes = list(self.classes.values())        
         for ann in anns:
             cat_id = ann['category_id']
@@ -345,19 +334,11 @@ class LVISData(data.Dataset):
 
     """
     magic method for iterating class items
-    
-    Question: in y dictionary do we need
-      - image_id - basically holding idx which has been input. 
-                   Are there times we wouldn't know the idx input,
-                   say when inspecting dataloaders that shuffled data
-      - iscrowd=boolean - if true then ignore in evaluation
-      - area - to tell if bounding box is small, 
-               medium or large. Used in MS Coco evaluation
     """
     def __getitem__(self, idx):
-        X = self.load_img(idx)
-        y = self.get_label(idx) 
-        return X,y
+         X = self.load_img(idx)
+         y = self.get_label(idx) 
+         return X,y
 
     
     
