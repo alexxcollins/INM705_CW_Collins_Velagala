@@ -18,8 +18,10 @@ logger = True
 
 """
 TODO:
-idx_to_img: load negative set  - for eval metrics??
-add transforms in load image method when stage = train? 
+idx_to_img: load negative set  - for eval metrics?
+add transforms in load image method when stage = train? (horizontal flip)
+add scores in plot_predictions
+output class label - class out of index error 
 
 """
 
@@ -123,7 +125,7 @@ class LVISData(data.Dataset):
             ann_id = ann['id']
             if(cat_id in classes) and (img_id in imgs):
                 idx = self.get_key_val(self.idx_img_map, img_id)
-                if idx:
+                if idx is not None:
                     idx_ann_map[idx].append(ann_id)
                     counter += 1 
                         
@@ -246,14 +248,14 @@ class LVISData(data.Dataset):
                 masks.append(mask)
                 
                 ##remove this later 
-                #temp = {959: 1, 982: 2}
+                #temp = {959: 1}#, 982: 2}
                 #ann_class = temp[ann_class]
                 
                 
                 inst_classes.append(ann_class)
             
         bboxes_t = torch.tensor(bboxes, dtype = torch.float)
-        masks_t = torch.tensor(masks, dtype = torch.uint8)
+        masks_t = torch.tensor(np.array(masks), dtype = torch.uint8)
         classes_t = torch.tensor(inst_classes, dtype = torch.int64)
         
         all_labels = {} 
@@ -307,13 +309,17 @@ class LVISData(data.Dataset):
                 ax.add_patch(rect)
                 
         if segs:
-            for ann_id in ann_ids:            
+            for ann_id in ann_ids:  
                 m = self.get_mask(idx, ann_id)
+                #if logger: print(m.shape)
                 img = np.ones( (m.shape[0], m.shape[1], 3) )
+                #if logger: print(img.shape)
                 color_mask = np.random.random((1, 3)).tolist()[0] #np.array([2.0,166.0,101.0])/255
                 for i in range(3):
                     img[:,:,i] = color_mask[i]
+                #if logger: print(img.shape) 
                 ax.imshow(np.dstack( (img, m*0.5) ))
+                #if logger: print(np.dstack( (img, m*0.5) ).shape)
                 
         plt.show()
         
@@ -322,25 +328,44 @@ class LVISData(data.Dataset):
     (used for test time - loads image and predicted bounding boxes)
     """
     
-    def plot_img_bboxes(self,idx, bboxes):
-        
-        img_id = self.idx_img_map[idx]
-        fname = str(img_id).zfill(12) + '.jpg'
-        path = self.imgs_dir + '/' + fname
-        im = PILImage.open(path)
-        
-        
-        if len(bboxes) > 0:
+    def plot_predictions(self, idx, predictions, show_bboxes = True, show_masks = True, show_scores = True):
+
+            if isinstance(predictions, list):
+                predictions = predictions[0]
+
+            img_id = self.idx_img_map[idx]
+            fname = str(img_id).zfill(12) + '.jpg'
+            path = self.imgs_dir + '/' + fname
+            im = PILImage.open(path)
+            #print(im.size)
+           
+            #Plots image 
             plt.imshow(im)
-            ax = plt.gca()        
-            ax.axis('off')
-            for id, b in enumerate(bboxes):
-                #b = b[0] #get tuple
-                rect = Rectangle((b[0],b[1]), b[2]-b[0], b[3]-b[1], linewidth=2, edgecolor='r', facecolor='none')
-                ax.add_patch(rect)
-            
-        plt.show()
-        return 
+
+
+            if show_bboxes:
+                bboxes = predictions['boxes'].to('cpu').detach().numpy()
+                if len(bboxes) > 0:
+                    ax = plt.gca()        
+                    ax.axis('off')
+                    for id, b in enumerate(bboxes):
+                        #b = b[0] #get tuple
+                        rect = Rectangle((b[0],b[1]), b[2]-b[0], b[3]-b[1], linewidth=2, edgecolor='r', facecolor='none')
+                        ax.add_patch(rect)
+
+            if show_masks:
+                masks = predictions['masks'].to('cpu').detach().numpy()
+                if len(masks) > 0:
+                    for m in masks:
+                        m = m[0, :, :]
+                        img = np.ones( (m.shape[0], m.shape[1], 3) )
+                        color_mask = np.random.random((1,3)).tolist()[0]
+                        for i in range(3):
+                            img[:,:,i] = color_mask[i]
+                        ax.imshow(np.dstack((img, m*0.5)))
+
+            plt.show()
+            return 
 
 
     """
@@ -353,9 +378,10 @@ class LVISData(data.Dataset):
     magic method for iterating class items
     """
     def __getitem__(self, idx):
+         #print("get item method:", idx)
          X = self.load_img(idx)
          y = self.get_label(idx) 
-         return X,y
+         return idx,X,y
         
     
     
