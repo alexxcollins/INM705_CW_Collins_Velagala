@@ -8,8 +8,12 @@ from torch.utils import data as data
 from torchvision import transforms as transforms
 from collections import defaultdict
 import matplotlib.pyplot as plt
-import json
+import ujson
 from matplotlib.patches import Rectangle, Polygon
+import warnings
+import scipy
+import scipy.ndimage
+
 
 import pycocotools.mask as mask_utils
 
@@ -36,13 +40,14 @@ class LVISData(data.Dataset):
         
         self.ann_data = self.get_ann_data(self.labels_f)
         self.classes = self.get_classes_dict(kwargs['classes'])
+        self.MAX_IMG_HEIGHT = kwargs['height']
+        self.MAX_IMG_WIDTH = kwargs['width']
         
         #load basic idx to id maps for easy access 
-        self.idx_img_map = self.idx_to_img()
-        self.idx_ann_map = self.idx_to_ann() 
-        self.ann_id_img_map = self.img_id_to_ann_idx() 
-
-
+        self.idx_img_map = self.idx_to_img() # custom class index to image file name 
+        self.idx_ann_map = self.idx_to_ann() #custom class index to ann id 
+        self.ann_id_img_map = self.img_id_to_ann_idx()  #image file name to ann_id 
+        
         
         if logger:
             print("stage: ", self.stage)
@@ -52,15 +57,13 @@ class LVISData(data.Dataset):
             print("imgs_dir: ", self.imgs_dir)
             
                   
-    
     """
     Returns contents of file 
     """
     def get_ann_data(self, file_name):
         f = open (self.labels_f, "r")
-        data = json.loads(f.read())
+        data = ujson.loads(f.read())
         f.close() 
-        
         return data 
     
     """
@@ -71,7 +74,6 @@ class LVISData(data.Dataset):
         idx_img_map = {} 
         
         #all images in current stage
-        
         stg_imgs = [f for f in os.listdir(self.imgs_dir) if not f.startswith('.')]
         stg_imgs = [int(stg_imgs[x].split('.')[0].lstrip('0')) for x in range(0,len(stg_imgs))]
         
@@ -140,6 +142,7 @@ class LVISData(data.Dataset):
     keys: image ids 
     value: index of key in annotation[images]
     """
+
     def img_id_to_ann_idx(self):
         all_imgs = self.ann_data['images']
         class_imgs = list(self.idx_img_map.values()) 
@@ -176,26 +179,90 @@ class LVISData(data.Dataset):
         except KeyError as e:
             raise e
         
+        
         fname = str(img_id).zfill(12) + '.jpg'
         path = self.imgs_dir + '/' + fname
         img = PILImage.open(path).convert("RGB")
         
-        tfrm = transforms.Compose([transforms.ToTensor()])
+        #needs to process images of diff size,in batch 
+        if self.stage == "train" or self.stage == "val":
+            #get image metadata 
+            img_idx = self.ann_id_img_map[img_id]
+            img_height = self.ann_data['images'][img_idx]['height']
+            img_width = self.ann_data['images'][img_idx]['width']
+            if logger:
+                print(f"Loaded image {fname}, old height: {img_height}, old width: {img_width}")
+            
+            #rescale image 
+            ratio = min(self.MAX_IMG_HEIGHT/img_height, self.MAX_IMG_WIDTH/img_width)
+            new_height = round(img_height*ratio) 
+            new_width = round(img_width*ratio)
+            if logger: 
+                print(f"Scale factor: {ratio}, new_height: {new_height}, new_width: {new_width}") 
+            
+        
+            bottom_pad = self.MAX_IMG_HEIGHT - new_height 
+            right_pad = self.MAX_IMG_WIDTH - new_width
+            tfrm = transforms.Compose([transforms.Resize((new_height, new_width)),
+                                       transforms.Pad((0,#left
+                                                       0,#top 
+                                                       (self.MAX_IMG_WIDTH - new_width), #right
+                                                      (self.MAX_IMG_HEIGHT - new_height)), #bottom 
+                                                      (192,192,192) #color
+                                                     ),
+                                        transforms.ToTensor()])           
+            
+        else:
+            tfrm = transforms.Compose([transforms.ToTensor()])
+        
         img = tfrm(img)
         return img 
     
-    
+    """
+    Plots image 
+    """
+    def plot_img(self, idx):
+        img_tensor = self.load_img(idx) 
+        plt.imshow(  img_tensor.permute(1, 2, 0)  )
+        return
+
   
     """
     Given an ann_idx bounding box as a list of coords
     """
-    def get_bboxes_by_ann(self, ann_id):
+    def get_bboxes_by_ann(self, idx, ann_id):
         
-        ann = self.ann_data['annotations'][ann_id -1]            
+        ann = self.ann_data['annotations'][ann_id -1]
         x, y, w, h  = ann['bbox']
         xmax = x + w 
         ymax = y + h 
- 
+        
+        if logger:
+            print(f"bbox: [{x}, {y}, {xmax}, {ymax}] , height: {h}, width: {w}") 
+        
+        if self.stage == "train" or self.stage == "val":
+            #get image id associated with annotation 
+            img_id = self.idx_img_map[idx]
+            img_idx = self.ann_id_img_map[img_id]
+            #get image metadata 
+            img_height = self.ann_data['images'][img_idx]['height']
+            img_width = self.ann_data['images'][img_idx]['width']
+            #scale factor 
+            ratio = min(self.MAX_IMG_HEIGHT/img_height, self.MAX_IMG_WIDTH/img_width)
+            
+            if logger: 
+                print(f"Scale factor: {ratio}") 
+                
+            #new bbox limits
+            x = x*ratio
+            y = y*ratio
+            xmax = x + round(w*ratio)
+            ymax = y + round(h*ratio)
+            
+            
+            if logger:
+                print(f"new bbox: [{x}, {y}, {xmax}, {ymax}] , height: {round(h*ratio)}, width: {round(w*ratio)}") 
+            
         return [x,y, xmax, ymax]
 
     """
@@ -216,6 +283,18 @@ class LVISData(data.Dataset):
             
         mask =  mask_utils.decode(rle)
         
+        if self.stage == "train" or self.stage == "val":
+            #get scale factor 
+            ratio = min(self.MAX_IMG_HEIGHT/h, self.MAX_IMG_WIDTH/w)
+            
+            #rescale mask for training/validation 
+            #https://github.com/matterport/Mask_RCNN/blob/master/mrcnn/utils.py
+            mask = scipy.ndimage.zoom(mask, zoom = ratio, order = 0)
+            right_padding = self.MAX_IMG_WIDTH - round(w*ratio) 
+            bottom_padding = self.MAX_IMG_HEIGHT - round(h*ratio) 
+
+            mask = np.pad(mask, ((0, bottom_padding), (0, right_padding)), constant_values = 0)
+                
         return mask
     
     
@@ -242,7 +321,7 @@ class LVISData(data.Dataset):
             ann_class = annotations[ann_id-1]['category_id']
             
             if ann_class in classes:
-                bbox = self.get_bboxes_by_ann(ann_id)                
+                bbox = self.get_bboxes_by_ann(idx, ann_id)                
                 mask = self.get_mask(idx, ann_id)
                 
                 bboxes.append(bbox)
@@ -272,22 +351,6 @@ class LVISData(data.Dataset):
 
         return all_labels
 
-
-    """
-    Plots image 
-    """
-    def plot_img(self, idx):
-        
-        try: 
-            img_id = self.idx_img_map[idx]
-        except KeyError as e:
-            raise e
-        
-        fname = str(img_id).zfill(12) + '.jpg'
-        path = self.imgs_dir + '/' + fname
-        return PILImage.open(path)
-    
-
     
     """
     Plots image with bounding boxes and annotations
@@ -300,12 +363,13 @@ class LVISData(data.Dataset):
         annotations = self.ann_data['annotations']
         
         
-        #plots image
-        plt.imshow(self.plot_img(idx))
+        #plots image - handles stage 
+        plt.imshow(self.load_img(idx).permute(1,2,0))
+        #plt.imshow(self.plot_img(idx))
         
         if bboxes:
             for ann_id in ann_ids:
-                b = self.get_bboxes_by_ann(ann_id)
+                b = self.get_bboxes_by_ann(idx, ann_id)
                 rect = Rectangle((b[0],b[1]), b[2]-b[0], b[3]-b[1], linewidth=2, edgecolor='r', facecolor='none')
                 ax.add_patch(rect)
                 
@@ -385,40 +449,7 @@ class LVISData(data.Dataset):
          return idx,X,y
         
     
-    
-    ##############DONT NEED THIS ANYMORE###########################33
-        
-    """
-    Given image index and class ids, 
-    returns dictionary of classes (keys) and bounding boxes (list of tuples)
-    {'a': [[x1,y1,x2,y2], [x1,y1,x2,y2]], 'b' : [[x1,...]]}
-    """
-
-    def get_bounding_boxes(self, idx, classes):
-        
-        ann_ids = self.idx_ann_map.get(idx)
-        annotations = self.ann_data['annotations']
-        classes = list(self.classes.values())
-        
-        class_bboxes_dict = defaultdict(list)
-    
-        
-        for ann_id in ann_ids:
-            ann = annotations[ann_id -1]            
-            ann_class = ann['category_id']
-            
-            if ann_class in classes:
-                x, y, w, h  = ann['bbox']
-                xmax = x + w 
-                ymax = y + h 
-                class_bboxes_dict[ann_class].append([(x,y, xmax, ymax)])
- 
-        return class_bboxes_dict
-
-
-  
-    
-        
+   
 
                 
 
