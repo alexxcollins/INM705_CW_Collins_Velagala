@@ -2,3 +2,5 @@
 .Python
 data/
 *.pth
+Datasets
+.ipynb_checkpoints/
