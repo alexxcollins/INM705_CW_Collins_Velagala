@@ -190,15 +190,15 @@ class LVISData(data.Dataset):
             img_idx = self.ann_id_img_map[img_id]
             img_height = self.ann_data['images'][img_idx]['height']
             img_width = self.ann_data['images'][img_idx]['width']
-            if logger:
-                print(f"Loaded image {fname}, old height: {img_height}, old width: {img_width}")
+            #if logger:
+            #    print(f"Loaded image {fname}, old height: {img_height}, old width: {img_width}")
             
             #rescale image 
             ratio = min(self.MAX_IMG_HEIGHT/img_height, self.MAX_IMG_WIDTH/img_width)
             new_height = round(img_height*ratio) 
             new_width = round(img_width*ratio)
-            if logger: 
-                print(f"Scale factor: {ratio}, new_height: {new_height}, new_width: {new_width}") 
+            #if logger: 
+            #    print(f"Scale factor: {ratio}, new_height: {new_height}, new_width: {new_width}") 
             
         
             bottom_pad = self.MAX_IMG_HEIGHT - new_height 
@@ -237,8 +237,8 @@ class LVISData(data.Dataset):
         xmax = x + w 
         ymax = y + h 
         
-        if logger:
-            print(f"bbox: [{x}, {y}, {xmax}, {ymax}] , height: {h}, width: {w}") 
+        #if logger:
+        #    print(f"bbox: [{x}, {y}, {xmax}, {ymax}] , height: {h}, width: {w}") 
         
         if self.stage == "train" or self.stage == "val":
             #get image id associated with annotation 
@@ -250,8 +250,8 @@ class LVISData(data.Dataset):
             #scale factor 
             ratio = min(self.MAX_IMG_HEIGHT/img_height, self.MAX_IMG_WIDTH/img_width)
             
-            if logger: 
-                print(f"Scale factor: {ratio}") 
+            #if logger: 
+            #    print(f"Scale factor: {ratio}") 
                 
             #new bbox limits
             x = x*ratio
@@ -260,8 +260,8 @@ class LVISData(data.Dataset):
             ymax = y + round(h*ratio)
             
             
-            if logger:
-                print(f"new bbox: [{x}, {y}, {xmax}, {ymax}] , height: {round(h*ratio)}, width: {round(w*ratio)}") 
+            #if logger:
+            #    print(f"new bbox: [{x}, {y}, {xmax}, {ymax}] , height: {round(h*ratio)}, width: {round(w*ratio)}") 
             
         return [x,y, xmax, ymax]
 
@@ -328,8 +328,8 @@ class LVISData(data.Dataset):
                 masks.append(mask)
                 
                 ##remove this later 
-                #temp = {959: 1}#, 982: 2}
-                #ann_class = temp[ann_class]
+                temp = {3: 1}#, 982: 2}
+                ann_class = temp[ann_class]
                 
                 
                 inst_classes.append(ann_class)
@@ -421,13 +421,14 @@ class LVISData(data.Dataset):
             if show_masks:
                 masks = predictions['masks'].to('cpu').detach().numpy()
                 if len(masks) > 0:
-                    for m in masks:
-                        m = m[0, :, :]
+                    for j in range(len(masks)):
+                        m = masks[j, :, :]
                         img = np.ones( (m.shape[0], m.shape[1], 3) )
                         color_mask = np.random.random((1,3)).tolist()[0]
                         for i in range(3):
                             img[:,:,i] = color_mask[i]
                         ax.imshow(np.dstack((img, m*0.5)))
+
 
             plt.show()
             return 
