@@ -3,4 +3,5 @@
 data/
 *.pth
 Datasets
+model_checkpoints
 .ipynb_checkpoints/
