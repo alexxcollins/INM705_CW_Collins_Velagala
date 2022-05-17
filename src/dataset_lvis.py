@@ -407,28 +407,35 @@ class LVISData(data.Dataset):
             #Plots image 
             plt.imshow(im)
 
-
+            box_corners = [] 
+            
             if show_bboxes:
                 bboxes = predictions['boxes'].to('cpu').detach().numpy()
                 if len(bboxes) > 0:
                     ax = plt.gca()        
                     ax.axis('off')
                     for id, b in enumerate(bboxes):
-                        #b = b[0] #get tuple
+                        box_corners.append((b[0],b[1]))
                         rect = Rectangle((b[0],b[1]), b[2]-b[0], b[3]-b[1], linewidth=2, edgecolor='r', facecolor='none')
                         ax.add_patch(rect)
+            
+            if show_bboxes and show_scores:
+                scores = predictions['scores'].to('cpu').detach().numpy()
+                for i in range(len(scores)):
+                    plt.text(box_corners[i][0],box_corners[i][1],str(round(scores[i], 3)))
+                
 
             if show_masks:
                 masks = predictions['masks'].to('cpu').detach().numpy()
                 if len(masks) > 0:
-                    for j in range(len(masks)):
-                        m = masks[j, :, :]
+                    for m in masks:
+                        m = m[0, :, :]
                         img = np.ones( (m.shape[0], m.shape[1], 3) )
                         color_mask = np.random.random((1,3)).tolist()[0]
                         for i in range(3):
                             img[:,:,i] = color_mask[i]
                         ax.imshow(np.dstack((img, m*0.5)))
-
+            
 
             plt.show()
             return 
