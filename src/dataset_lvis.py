@@ -49,12 +49,31 @@ class LVISData(data.Dataset):
         self.ann_id_img_map = self.img_id_to_ann_idx()  #image file name to ann_id 
         
         
+        # reindexes from  lvis class # to new value starting from 1
+        self.class_idx_map = self.map_classes()
+        
+        
         if logger:
             print("stage: ", self.stage)
-            print("classes: ", self.classes)
+            #print("classes: ", self.classes)
             print("ds_path: ", self.ds_path)
             print("labels_f: ", self.labels_f)
             print("imgs_dir: ", self.imgs_dir)
+            
+    """
+    Re-indexes from LVIS class 3 to new values starting from 1
+    cannot use 0 - reserved for background classes 
+    """
+    def map_classes(self):
+        mapped_idx ={}
+        temp = {} 
+        for i, key in enumerate(self.classes.keys()):
+            mapped_idx[self.classes.get(key)] = (i+1) 
+            temp[i+1] = key 
+        if logger:
+            print(f"classes : {temp}")
+        
+        return mapped_idx 
             
                   
     """
@@ -327,9 +346,9 @@ class LVISData(data.Dataset):
                 bboxes.append(bbox)
                 masks.append(mask)
                 
-                ##remove this later 
-                temp = {3: 1}#, 982: 2}
-                ann_class = temp[ann_class]
+                
+                #reindex classes based on new index values 
+                ann_class = self.class_idx_map[ann_class]
                 
                 
                 inst_classes.append(ann_class)
@@ -340,9 +359,6 @@ class LVISData(data.Dataset):
         
         all_labels = {} 
         
-        #all_labels['bboxes'] = bboxes_t
-        #all_labels['masks'] = masks_t
-        #all_labels['classes'] = classes_t
         
         all_labels['boxes'] = bboxes_t
         all_labels['masks'] = masks_t
