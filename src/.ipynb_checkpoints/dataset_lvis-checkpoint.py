@@ -22,6 +22,7 @@ idx_to_img: load negative set  - for eval metrics?
 add transforms in load image method when stage = train? (horizontal flip)
 add scores in plot_predictions
 output class label - class out of index error 
+see if this show up 
 
 """
 
