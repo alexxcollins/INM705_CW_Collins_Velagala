@@ -23,11 +23,10 @@ logger = True
 """
 TODO:
 idx_to_img: load negative set  - for eval metrics?
-add transforms in load image method when stage = train? (horizontal flip)
-add scores in plot_predictions
-output class label - class out of index error 
+add transforms in load image method when stage = train? (horizontal flip/brightness)
+add scores in plot_predictions - ADDED
+output class label - class out of index error - FIXED  
 see if this show up 
-
 """
 
 class LVISData(data.Dataset):
@@ -49,12 +48,31 @@ class LVISData(data.Dataset):
         self.ann_id_img_map = self.img_id_to_ann_idx()  #image file name to ann_id 
         
         
+        # reindexes from  lvis class # to new value starting from 1
+        self.class_idx_map = self.map_classes()
+        
+        
         if logger:
             print("stage: ", self.stage)
-            print("classes: ", self.classes)
+            #print("classes: ", self.classes)
             print("ds_path: ", self.ds_path)
             print("labels_f: ", self.labels_f)
             print("imgs_dir: ", self.imgs_dir)
+            
+    """
+    Re-indexes from LVIS class 3 to new values starting from 1
+    cannot use 0 - reserved for background classes 
+    """
+    def map_classes(self):
+        mapped_idx ={}
+        temp = {} 
+        for i, key in enumerate(self.classes.keys()):
+            mapped_idx[self.classes.get(key)] = (i+1) 
+            temp[i+1] = key 
+        if logger:
+            print(f"classes : {temp}")
+        
+        return mapped_idx 
             
                   
     """
@@ -190,15 +208,15 @@ class LVISData(data.Dataset):
             img_idx = self.ann_id_img_map[img_id]
             img_height = self.ann_data['images'][img_idx]['height']
             img_width = self.ann_data['images'][img_idx]['width']
-            if logger:
-                print(f"Loaded image {fname}, old height: {img_height}, old width: {img_width}")
+            #if logger:
+            #    print(f"Loaded image {fname}, old height: {img_height}, old width: {img_width}")
             
             #rescale image 
             ratio = min(self.MAX_IMG_HEIGHT/img_height, self.MAX_IMG_WIDTH/img_width)
             new_height = round(img_height*ratio) 
             new_width = round(img_width*ratio)
-            if logger: 
-                print(f"Scale factor: {ratio}, new_height: {new_height}, new_width: {new_width}") 
+            #if logger: 
+            #    print(f"Scale factor: {ratio}, new_height: {new_height}, new_width: {new_width}") 
             
         
             bottom_pad = self.MAX_IMG_HEIGHT - new_height 
@@ -237,8 +255,8 @@ class LVISData(data.Dataset):
         xmax = x + w 
         ymax = y + h 
         
-        if logger:
-            print(f"bbox: [{x}, {y}, {xmax}, {ymax}] , height: {h}, width: {w}") 
+        #if logger:
+        #    print(f"bbox: [{x}, {y}, {xmax}, {ymax}] , height: {h}, width: {w}") 
         
         if self.stage == "train" or self.stage == "val":
             #get image id associated with annotation 
@@ -250,8 +268,8 @@ class LVISData(data.Dataset):
             #scale factor 
             ratio = min(self.MAX_IMG_HEIGHT/img_height, self.MAX_IMG_WIDTH/img_width)
             
-            if logger: 
-                print(f"Scale factor: {ratio}") 
+            #if logger: 
+            #    print(f"Scale factor: {ratio}") 
                 
             #new bbox limits
             x = x*ratio
@@ -260,8 +278,8 @@ class LVISData(data.Dataset):
             ymax = y + round(h*ratio)
             
             
-            if logger:
-                print(f"new bbox: [{x}, {y}, {xmax}, {ymax}] , height: {round(h*ratio)}, width: {round(w*ratio)}") 
+            #if logger:
+            #    print(f"new bbox: [{x}, {y}, {xmax}, {ymax}] , height: {round(h*ratio)}, width: {round(w*ratio)}") 
             
         return [x,y, xmax, ymax]
 
@@ -327,9 +345,9 @@ class LVISData(data.Dataset):
                 bboxes.append(bbox)
                 masks.append(mask)
                 
-                ##remove this later 
-                #temp = {959: 1}#, 982: 2}
-                #ann_class = temp[ann_class]
+                
+                #reindex classes based on new index values 
+                ann_class = self.class_idx_map[ann_class]
                 
                 
                 inst_classes.append(ann_class)
@@ -340,9 +358,6 @@ class LVISData(data.Dataset):
         
         all_labels = {} 
         
-        #all_labels['bboxes'] = bboxes_t
-        #all_labels['masks'] = masks_t
-        #all_labels['classes'] = classes_t
         
         all_labels['boxes'] = bboxes_t
         all_labels['masks'] = masks_t
@@ -407,16 +422,23 @@ class LVISData(data.Dataset):
             #Plots image 
             plt.imshow(im)
 
-
+            box_corners = [] 
+            
             if show_bboxes:
                 bboxes = predictions['boxes'].to('cpu').detach().numpy()
                 if len(bboxes) > 0:
                     ax = plt.gca()        
                     ax.axis('off')
                     for id, b in enumerate(bboxes):
-                        #b = b[0] #get tuple
+                        box_corners.append((b[0],b[1]))
                         rect = Rectangle((b[0],b[1]), b[2]-b[0], b[3]-b[1], linewidth=2, edgecolor='r', facecolor='none')
                         ax.add_patch(rect)
+            
+            if show_bboxes and show_scores:
+                scores = predictions['scores'].to('cpu').detach().numpy()
+                for i in range(len(scores)):
+                    plt.text(box_corners[i][0],box_corners[i][1],str(round(scores[i], 3)))
+                
 
             if show_masks:
                 masks = predictions['masks'].to('cpu').detach().numpy()
@@ -428,6 +450,7 @@ class LVISData(data.Dataset):
                         for i in range(3):
                             img[:,:,i] = color_mask[i]
                         ax.imshow(np.dstack((img, m*0.5)))
+            
 
             plt.show()
             return 
@@ -443,7 +466,6 @@ class LVISData(data.Dataset):
     magic method for iterating class items
     """
     def __getitem__(self, idx):
-         #print("get item method:", idx)
          X = self.load_img(idx)
          y = self.get_label(idx) 
          return idx,X,y
