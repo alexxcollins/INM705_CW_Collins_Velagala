@@ -41,6 +41,16 @@ gt: [img_idx, [[x1,y1, x2,y2], [x1,y1,x2,y2], ....]
 """
 def calculate_ap(preds, gts, iou_threshold):
     
+    epsilon = 1e-6 
+    
+    
+    
+    
+    
+    
+    
+    pass
+    
     #for each training example find number of bboxes 
     
     
@@ -54,4 +64,5 @@ def calculate_map(preds, gt, iou_threshold, num_classes):
         #go through each gt and see if prediction is of class we're interested in 
         
         #create a dictionary for each image, # of gt bboxes 
+    pass
         

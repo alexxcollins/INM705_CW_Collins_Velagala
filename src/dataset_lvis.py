@@ -23,11 +23,10 @@ logger = True
 """
 TODO:
 idx_to_img: load negative set  - for eval metrics?
-add transforms in load image method when stage = train? (horizontal flip)
-add scores in plot_predictions
-output class label - class out of index error 
+add transforms in load image method when stage = train? (horizontal flip/brightness)
+add scores in plot_predictions - ADDED
+output class label - class out of index error - FIXED  
 see if this show up 
-
 """
 
 class LVISData(data.Dataset):
@@ -467,7 +466,6 @@ class LVISData(data.Dataset):
     magic method for iterating class items
     """
     def __getitem__(self, idx):
-         #print("get item method:", idx)
          X = self.load_img(idx)
          y = self.get_label(idx) 
          return idx,X,y

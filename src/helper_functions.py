@@ -31,8 +31,6 @@ class CollateCustom:
         return idx, X, y
     
 
-
-
 """
 saves model weights + optimizer params + epoch 
 """
@@ -63,4 +61,59 @@ def save_model(model, fname):
 def load_model(model, fname):
     model.load_state_dict(torch.load(fname)) 
     print(f"Loaded from model {fname}!")
+
+    
+"""
+Filters model output predictions and ground truths to specified class
+Can input multiple images 
+
+"""
+    
+def filter_to_label(predictions, ground_truth, class_label): 
+    
+    gts = [] 
+    
+    #key = image idx - for each image 
+    for i, key in enumerate(ground_truth.keys()):
+    
+        labels = ground_truth.get(key)['labels'].to('cpu').detach()
+        boxes = ground_truth.get(key)['boxes'].to('cpu').detach()
+        
+        bboxes = []
+        #get bbboxes of interest
+        for i, label in enumerate(labels):
+            if label == class_label:
+                bboxes.append(boxes[i]) 
+                
+        gts.append([key, bboxes])
+    
+    #print("Ground Truth:")
+    #print(gts) 
+    
+    
+    
+    preds = [] 
+    
+    for i, key in enumerate(predictions.keys()):
+        
+        labels = predictions.get(key)['labels'].to('cpu').detach()
+        boxes = predictions.get(key)['boxes'].to('cpu').detach()
+        scores = predictions.get(key)['scores'].to('cpu').detach()
+        
+        bboxes =[] 
+        conf_scores = [] 
+        
+        for i, label in enumerate(labels):
+            if label == class_label:
+                bboxes.append(boxes[i])
+                conf_scores.append(scores[i]) 
+                
+        preds.append([key, scores, boxes])
+        
+    #print("Predictions:")
+    #print(preds)
+        
+    return gts, preds  
+        
+    
     
