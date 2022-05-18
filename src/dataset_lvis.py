@@ -61,9 +61,8 @@ class LVISData(data.Dataset):
     Returns contents of file 
     """
     def get_ann_data(self, file_name):
-        f = open (self.labels_f, "r")
-        data = ujson.loads(f.read())
-        f.close() 
+        with open(self.labels_f, "r") as f:
+            data = ujson.load(f)
         return data 
     
     """
