@@ -35,7 +35,7 @@ class LVISData(data.Dataset):
         self.stage = kwargs['stage']
         self.ds_path = kwargs['ds_path']
         self.labels_f = kwargs['ds_path'] + kwargs['labels_dir'] +  '/' +"lvis_v1_{}.json".format(self.stage)
-        self.imgs_dir = kwargs['ds_path'] + kwargs['images_dir'] + '/' + self.stage + '2017'
+        self.imgs_dir = kwargs['ds_path'] + kwargs['images_dir'] + '/' + 'train2017'  #LVIS train/val/test split not same as coco
         
         self.ann_data = self.get_ann_data(self.labels_f)
         self.classes = self.get_classes_dict(kwargs['classes'])
