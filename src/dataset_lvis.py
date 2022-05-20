@@ -207,7 +207,10 @@ class LVISData(data.Dataset):
     Returns dict of all annotations ids associated with each index 
     """
     def idx_to_ann(self):
-        idx_ann_map = defaultdict(list)
+        # idx_ann_map = defaultdict(list)
+        idx_ann_map = {}
+        for i in self.idx_img_map.keys():
+            idx_ann_map[i] = []
         
         anns = self.ann_data['annotations']
         imgs = list(self.idx_img_map.values())
@@ -400,6 +403,7 @@ class LVISData(data.Dataset):
     """
     def get_label(self, idx, classes = None):
          
+        
         ann_ids = self.idx_ann_map.get(idx)
             
         annotations = self.ann_data['annotations']
