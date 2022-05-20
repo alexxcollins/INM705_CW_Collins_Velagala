@@ -145,6 +145,9 @@ class LVISData(data.Dataset):
             n_exhaust = set(img['not_exhaustive_category_ids'])
             if not n_exhaust.isdisjoint(classes):
                 non_exhaustive.add(img['id'])
+                
+        # restrict negative set size to make dataset manageable
+        neg_imgs = set(list(neg_imgs)[:self.max_negative])
         
         # we also need to create the union of positive and negative datasets for 
         # individual categories. We remove any non-exhaustively labeled images - we remove
