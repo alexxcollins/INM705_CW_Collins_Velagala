@@ -23,7 +23,9 @@ logger = True
 
 """
 TODO:
-idx_to_img: load negative set  - for eval metrics?
+idx_to_img: check if any downstream changes needed after idx_to_img() method changes
+            method creates the .idx_img_map attribute. Quick test showed it worked
+idx_to_img: load negative set  - for eval metrics - DONE
 add transforms in load image method when stage = train? (horizontal flip/brightness)
 add scores in plot_predictions - ADDED
 output class label - class out of index error - FIXED  
