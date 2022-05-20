@@ -44,7 +44,6 @@ class LVISData(data.Dataset):
         
         self.ann_data = self.get_ann_data(self.labels_f)
         self.classes = self.get_classes_dict(kwargs['classes'])
-        self.class_ids = list(self.classes.values()) # list of class ids (LVIS class id)
         self.MAX_IMG_HEIGHT = kwargs['height']
         self.MAX_IMG_WIDTH = kwargs['width']
         
@@ -97,32 +96,31 @@ class LVISData(data.Dataset):
         idx_img_map = {} 
         
         #all images in current stage
-        stg_imgs = [f for f in os.listdir(self.imgs_dir) if not f.startswith('.')]
-        stg_imgs = [int(stg_imgs[x].split('.')[0].lstrip('0')) for x in range(0,len(stg_imgs))]
+        # stg_imgs = [f for f in os.listdir(self.imgs_dir) if not f.startswith('.')]
+        # stg_imgs = [int(stg_imgs[x].split('.')[0].lstrip('0')) for x in range(0,len(stg_imgs))]
         
         
         #load positive set 
         pos_imgs = set()
         anns = self.ann_data['annotations']
-        classes = list(self.classes.values())        
+        classes = set(self.classes.values())        
         for ann in anns:
             cat_id = ann['category_id']
             img_id = ann['image_id']
-            if (cat_id in classes) and (img_id in stg_imgs):
+            if (cat_id in classes): # and (img_id in stg_imgs):
                 pos_imgs.add(img_id)     
         
         #load negative set and non-exhaustive set
         neg_imgs = set()  # initialise empty negative set
         non_exhaustive = set()
-        cats = set(self.class_ids) # create set of classes in our dataset
         
         for img in self.ann_data['images']:
             negs = set(img['neg_category_ids'])
-            if not negs.isdisjoint(cats):
+            if not negs.isdisjoint(classes):
                 neg_imgs.add(img['id'])
                 
             n_exhaust = set(img['not_exhaustive_category_ids'])
-            if not n_exhaust.isdisjoint(cats):
+            if not n_exhaust.isdisjoint(classes):
                 non_exhaustive.add(img['id'])
         
         if logger:
