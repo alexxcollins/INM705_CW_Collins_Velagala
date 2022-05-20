@@ -162,6 +162,9 @@ class LVISData(data.Dataset):
             d['union'] = d['positive'].union(d['negative'])
             # add the negative images to our dataset
             neg_imgs = neg_imgs.union(d['negative'])
+            # convert sets to lists:
+            for k, v in d.items():
+                d[k] = list(v)
             
         # create union of positive and negative, remove non-exhaustive 
         imgs = pos_imgs.union(neg_imgs) - non_exhaustive
