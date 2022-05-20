@@ -1,4 +1,5 @@
 import os,sys
+from pathlib import Path
 import re
 import numpy as np
 from PIL import Image as PILImage
@@ -34,11 +35,14 @@ class LVISData(data.Dataset):
     def __init__(self, **kwargs):
         self.stage = kwargs['stage']
         self.ds_path = kwargs['ds_path']
-        self.labels_f = kwargs['ds_path'] + kwargs['labels_dir'] +  '/' +"lvis_v1_{}.json".format(self.stage)
-        self.imgs_dir = kwargs['ds_path'] + kwargs['images_dir'] + '/' + 'train2017'  #LVIS train/val/test split not same as coco
+        self.labels_f = kwargs['ds_path'] + kwargs['labels_dir'] + \
+            '/lvis_v1_{}.json'.format(self.stage)
+        self.imgs_dir = kwargs['ds_path'] + kwargs['images_dir'] + \
+            '/train2017'  #LVIS train/val/test split not same as coco
         
         self.ann_data = self.get_ann_data(self.labels_f)
         self.classes = self.get_classes_dict(kwargs['classes'])
+        self.class_ids = list(self.classes.values()) # list of class ids (LVIS class id)
         self.MAX_IMG_HEIGHT = kwargs['height']
         self.MAX_IMG_WIDTH = kwargs['width']
         
@@ -96,20 +100,38 @@ class LVISData(data.Dataset):
         
         
         #load positive set 
-        imgs = [] 
+        pos_imgs = set()
         anns = self.ann_data['annotations']
         classes = list(self.classes.values())        
         for ann in anns:
             cat_id = ann['category_id']
             img_id = ann['image_id']
             if (cat_id in classes) and (img_id in stg_imgs):
-                imgs.append(img_id)     
-                
-        #remove duplicates 
-        imgs = list(set(imgs))
+                pos_imgs.add(img_id)     
         
-        for idx, image_id in enumerate(imgs):
-            idx_img_map[idx] = image_id 
+        #load negative set and non-exhaustive set
+        neg_imgs = set()  # initialise empty negative set
+        non_exhaustive = set()
+        cats = set(self.class_ids) # create set of classes in our dataset
+        
+        for img in self.ann_data['images']:
+            negs = set(img['neg_category_ids'])
+            if not negs.isdisjoint(cats):
+                neg_imgs.add(img['id'])
+                
+            n_exhaust = set(img['not_exhaustive_category_ids'])
+            if not n_exhaust.isdisjoint(cats):
+                non_exhaustive.add(img['id'])
+        
+        if logger:
+            print(f"loaded {len(pos_imgs)} positive set images")
+            print(f"loaded {len(neg_imgs)} negative set images")
+            print(f"loaded {len(non_exhaustive)} non-exhaustive set images")
+            
+        # create union of positive and negative, remove non-exhaustive 
+        imgs = pos_imgs.union(neg_imgs) - non_exhaustive
+        
+        idx_img_map = dict(zip(range(len(imgs)), imgs))
             
         if logger:
             print("Loaded {} images!".format(len(imgs)))
@@ -240,7 +262,7 @@ class LVISData(data.Dataset):
     """
     def plot_img(self, idx):
         img_tensor = self.load_img(idx) 
-        plt.imshow(  img_tensor.permute(1, 2, 0)  )
+        plt.imshow(img_tensor.permute(1, 2, 0)  )
         return
 
   
