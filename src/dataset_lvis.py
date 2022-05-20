@@ -46,6 +46,7 @@ class LVISData(data.Dataset):
         self.classes = self.get_classes_dict(kwargs['classes'])
         self.MAX_IMG_HEIGHT = kwargs['height']
         self.MAX_IMG_WIDTH = kwargs['width']
+        self.max_negative = kwargs['max_negative']
         
         #load basic idx to id maps for easy access 
         self.idx_img_map = self.idx_to_img() # custom class index to image file name 
@@ -122,6 +123,9 @@ class LVISData(data.Dataset):
             n_exhaust = set(img['not_exhaustive_category_ids'])
             if not n_exhaust.isdisjoint(classes):
                 non_exhaustive.add(img['id'])
+                
+        # restrict negative set size to make dataset manageable
+        neg_imgs = set(list(neg_imgs)[:self.max_negative])
         
         if logger:
             print(f"loaded {len(pos_imgs)} positive set images")
