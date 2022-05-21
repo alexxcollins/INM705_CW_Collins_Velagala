@@ -152,8 +152,10 @@ def calculate_ap(pred_box, gt_boxes, num_classes, iou_threshold=0.5):
         AP.append(torch.trapz(precisions, recalls))
         print(f'AP is {AP[-1].item()}')
         print('-------\n')
-                            
-    return sum(AP) / len(AP)
+        
+    per_cls_AP = dict(zip(range(1, num_classes + 1), AP))
+    
+    return sum(AP) / len(AP), per_cls_AP
     
     #for each training example find number of bboxes 
     
