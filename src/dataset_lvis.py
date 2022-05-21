@@ -62,7 +62,7 @@ class LVISData(data.Dataset):
         
         if logger:
             print("stage: ", self.stage)
-            #print("classes: ", self.classes)
+            print("classes: ", self.classes)
             print("ds_path: ", self.ds_path)
             print("labels_f: ", self.labels_f)
             print("imgs_dir: ", self.imgs_dir)
@@ -417,22 +417,35 @@ class LVISData(data.Dataset):
         bboxes = []
         masks = [] 
         
+        
+        #if ann_ids is not None:
         for ann_id in ann_ids:
             ann_class = annotations[ann_id-1]['category_id']
-            
+
             if ann_class in classes:
                 bbox = self.get_bboxes_by_ann(idx, ann_id)                
                 mask = self.get_mask(idx, ann_id)
-                
+
                 bboxes.append(bbox)
                 masks.append(mask)
-                
-                
+
+
                 #reindex classes based on new index values 
                 ann_class = self.class_idx_map[ann_class]
-                
-                
                 inst_classes.append(ann_class)
+                    
+        #add handling for negative set 
+        if len(inst_classes) == 0: 
+            inst_classes.append(0) 
+            bboxes.append([0,0,1,1])
+            img_size = self.load_img(idx).shape
+            masks.append(np.zeros((img_size[0], img_size[1], img_size[2])))
+        
+        #print(inst_classes)
+        #print(bboxes) 
+        #print(masks)
+            
+        
             
         bboxes_t = torch.tensor(bboxes, dtype = torch.float)
         masks_t = torch.tensor(np.array(masks), dtype = torch.uint8)
