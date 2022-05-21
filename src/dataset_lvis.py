@@ -498,11 +498,12 @@ class LVISData(data.Dataset):
             img_id = self.idx_img_map[idx]
             fname = str(img_id).zfill(12) + '.jpg'
             path = self.imgs_dir + '/' + fname
-            im = PILImage.open(path)
+            # im = PILImage.open(path)
+            plt.imshow(self.load_img(idx).permute(1,2,0))
             #print(im.size)
            
             #Plots image 
-            plt.imshow(im)
+            # plt.imshow(im)
 
             box_corners = [] 
             
