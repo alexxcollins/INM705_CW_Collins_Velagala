@@ -67,32 +67,41 @@ def store_preds(idx, y, y_pred, pred_boxes = [], gt = []):
     return pred_boxes, gt
 
 
-def calculate_ap(pred_box, gt_boxes, num_classes, iou_threshold=0.5):
+def calculate_ap(pred_box, gt_boxes, class_datasets, iou_threshold=0.5, logger=False):
     """
     Calculating AP for a given class for a given IOU threshold 
     
     input:
     pred_box: list for each prediction consisting of:
         [img_idx, label, score, box: tensor]
-    gts: list of ground truths for all images in test set consisting of:
+    gt_boxes: list of ground truths for all images in test set consisting of:
         [img_idx, label, box: tensor]
+    class_datasets: dict
+        this is a dictionary and is in dataset_lvis attribut .class_datasets
+        keys are class idx
+        values are dictionaries. We are interested in 'union' key which has value
+        pair of list of image idx of whih the class dataset consists of
+    iou_threshold: float
+    logger: boolean. Set to true if you want a load of debugging output or to check calcs look reaonable
+        
     """
-    
+    num_classes = len(class_datasets)
     epsilon = 1e-6
     AP = []
-    print(len(pred_box))
     
     for c in range(1, num_classes + 1):
         detections = []
         gts = []
         
         for detection in pred_box:
-            if detection[1] == c:
+            # we just evaluate each class over its federated dataset
+            if (detection[1] == c) and (detection[0] in class_datasets[c]['union']):
                 detections.append(detection)
-        print(f'class {c}: len detections: {len(detections)}')
+        if logger:
+            print(f'class {c}: len detections: {len(detections)}')
                 
         for g in gt_boxes:
-            if g[1] == c:
+            if (g[1] == c) and (g[0] in class_datasets[c]['union']):
                 gts.append(g)
                 
         # count how many ground truth bboxes we have for each image
@@ -135,23 +144,27 @@ def calculate_ap(pred_box, gt_boxes, num_classes, iou_threshold=0.5):
             else: # FP
                 FP[det_idx] = 1
         
-        print(f'for category {c}:\n-------')
+        if logger:
+            print(f'for category {c}:\n-------')
         TP_cumsum = torch.cumsum(TP, dim=0)
         FP_cumsum = torch.cumsum(FP, dim=0)
-        print('TP and FP:')
-        print(TP_cumsum)
-        print(FP_cumsum)
+        if logger:
+            print('TP and FP:')
+            print(TP_cumsum)
+            print(FP_cumsum)
         recalls = TP_cumsum / (tot_true_bboxes + epsilon)
         precisions = TP_cumsum / (TP_cumsum + FP_cumsum + epsilon)
-        print(f'total gts {tot_true_bboxes}')
-        print('precisions and recalls:')
-        print(precisions)
-        print(recalls)
+        if logger:
+            print(f'total gts {tot_true_bboxes}')
+            print('precisions and recalls:')
+            print(precisions)
+            print(recalls)
         precisions = torch.cat((torch.tensor([1]), precisions))
         recalls = torch.cat((torch.tensor([0]), recalls))
         AP.append(torch.trapz(precisions, recalls))
-        print(f'AP is {AP[-1].item()}')
-        print('-------\n')
+        if logger:
+            print(f'AP is {AP[-1].item()}')
+            print('-------\n')
         
     per_cls_AP = dict(zip(range(1, num_classes + 1), AP))
     
