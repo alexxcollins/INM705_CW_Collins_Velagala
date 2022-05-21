@@ -50,7 +50,7 @@ class LVISData(data.Dataset):
         self.max_negative = kwargs['max_negative']
 
         # reindexes from  lvis class # to new value starting from 
-        self.class_idx_map = self.map_classes()
+        self.class_idx_map, self.idx_to_classname = self.map_classes()
         
         # custom class index to image file name, and structure to hold information about 
         # class datasets
@@ -80,7 +80,7 @@ class LVISData(data.Dataset):
         if logger:
             print(f"classes : {temp}")
         
-        return mapped_idx 
+        return mapped_idx, temp
             
                   
     """
@@ -162,12 +162,8 @@ class LVISData(data.Dataset):
                 d['negative'] = set(random.sample(d['negative'],
                                           self.max_negative))
                 
-            d['union'] = d['positive'].union(d['negative'])
             # add the negative images to our dataset
             neg_imgs = neg_imgs.union(d['negative'])
-            # convert sets to lists:
-            for k, v in d.items():
-                d[k] = list(v)
             
         # create union of positive and negative, remove non-exhaustive 
         imgs = pos_imgs.union(neg_imgs) - non_exhaustive
@@ -176,12 +172,14 @@ class LVISData(data.Dataset):
         idx_img_reverse = dict(zip(imgs, range(len(imgs))))
         
         for cat, d in class_datasets.items():
-            # convert all image ids to our new custom id:
-            for img in d['negative']:
-                img = idx_img_reverse[img]
-            for img in d['positive']:
-                img = idx_img_reverse[img]
-        
+            d['union'] = d['positive'].union(d['negative'])
+            
+            # convert all image ids to our new custom id and convert to lists:            
+            d['negative'] = [idx_img_reverse[img] for img in d['negative']]
+            d['positive'] = [idx_img_reverse[img] for img in d['positive']]
+            d['union'] = [idx_img_reverse[img] for img in d['union']]
+
+                
         if logger:
             print(f"loaded {len(pos_imgs)} positive set images")
             print(f"loaded {len(neg_imgs)} negative set images")
