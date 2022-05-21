@@ -1,4 +1,5 @@
 import os,sys
+import random
 from pathlib import Path
 import re
 import numpy as np
@@ -47,16 +48,17 @@ class LVISData(data.Dataset):
         self.MAX_IMG_HEIGHT = kwargs['height']
         self.MAX_IMG_WIDTH = kwargs['width']
         self.max_negative = kwargs['max_negative']
-        
-        #load basic idx to id maps for easy access 
-        self.idx_img_map = self.idx_to_img() # custom class index to image file name 
-        self.idx_ann_map = self.idx_to_ann() #custom class index to ann id 
-        self.ann_id_img_map = self.img_id_to_ann_idx()  #image file name to ann_id 
-        
-        
-        # reindexes from  lvis class # to new value starting from 1
+
+        # reindexes from  lvis class # to new value starting from 
         self.class_idx_map = self.map_classes()
         
+        # custom class index to image file name, and structure to hold information about 
+        # class datasets
+        self.idx_img_map, self.class_datasets = self.idx_to_img() 
+        #load basic idx to id maps for easy access 
+        self.idx_ann_map = self.idx_to_ann() # custom image idx to LVIS annotation id
+        self.ann_id_img_map = self.img_id_to_ann_idx()  #image file name to ann_id 
+        random.seed(42)
         
         if logger:
             print("stage: ", self.stage)
@@ -94,23 +96,40 @@ class LVISData(data.Dataset):
     for stage specified 
     """
     def idx_to_img(self):
+        """Return the total dataset. Also return per category datasets
+        
+        LVIS is a "federated dataset" so we need to keep track of datasets for each category for test purposes.
+        
+        Return:
+            idx_img_map: a dictionary with integer keys and LVIS img id values.
+            dictionary with categories as keys, positive, negative and union of positive and negative sets as values
+        
+        """
         idx_img_map = {} 
         
         #all images in current stage
         # stg_imgs = [f for f in os.listdir(self.imgs_dir) if not f.startswith('.')]
         # stg_imgs = [int(stg_imgs[x].split('.')[0].lstrip('0')) for x in range(0,len(stg_imgs))]
         
-        
         #load positive set 
         pos_imgs = set()
         anns = self.ann_data['annotations']
-        classes = set(self.classes.values())        
+        classes = set(self.classes.values())
+        
+        # structure to hold per category dataset
+        class_datasets = {}
+        for i in range(1, len(self.class_idx_map) + 1): 
+            class_datasets[i] = {'union': set(),
+                                 'positive': set(),
+                                 'negative': set()}
+        
         for ann in anns:
             cat_id = ann['category_id']
             img_id = ann['image_id']
             if (cat_id in classes): # and (img_id in stg_imgs):
-                pos_imgs.add(img_id)     
-        
+                pos_imgs.add(img_id) 
+                class_datasets[self.class_idx_map[cat_id]]['positive'].add(img_id)
+                
         #load negative set and non-exhaustive set
         neg_imgs = set()  # initialise empty negative set
         non_exhaustive = set()
@@ -118,7 +137,10 @@ class LVISData(data.Dataset):
         for img in self.ann_data['images']:
             negs = set(img['neg_category_ids'])
             if not negs.isdisjoint(classes):
-                neg_imgs.add(img['id'])
+                # neg_imgs.add(img['id'])
+                # add this image to any of our negative sets for our categories
+                for cat in negs.intersection(classes):
+                    class_datasets[self.class_idx_map[cat]]['negative'].add(img['id'])
                 
             n_exhaust = set(img['not_exhaustive_category_ids'])
             if not n_exhaust.isdisjoint(classes):
@@ -127,20 +149,49 @@ class LVISData(data.Dataset):
         # restrict negative set size to make dataset manageable
         neg_imgs = set(list(neg_imgs)[:self.max_negative])
         
-        if logger:
-            print(f"loaded {len(pos_imgs)} positive set images")
-            print(f"loaded {len(neg_imgs)} negative set images")
-            print(f"loaded {len(non_exhaustive)} non-exhaustive set images")
+        # we also need to create the union of positive and negative datasets for 
+        # individual categories. We remove any non-exhaustively labeled images - we remove
+        # all of these. So if img A is non-exhaustive for cats, we still take it away form
+        # the dogs set.
+        temp = set()
+        for cat, d in class_datasets.items():
+            d['positive'] = d['positive'] - non_exhaustive
+            d['negative'] = d['negative'] - non_exhaustive 
+            
+            if len(d['negative']) > self.max_negative:
+                d['negative'] = set(random.sample(d['negative'],
+                                          self.max_negative))
+                
+            d['union'] = d['positive'].union(d['negative'])
+            # add the negative images to our dataset
+            neg_imgs = neg_imgs.union(d['negative'])
+            # convert sets to lists:
+            for k, v in d.items():
+                d[k] = list(v)
             
         # create union of positive and negative, remove non-exhaustive 
         imgs = pos_imgs.union(neg_imgs) - non_exhaustive
         
         idx_img_map = dict(zip(range(len(imgs)), imgs))
-            
+        idx_img_reverse = dict(zip(imgs, range(len(imgs))))
+        
+        for cat, d in class_datasets.items():
+            # convert all image ids to our new custom id:
+            for img in d['negative']:
+                img = idx_img_reverse[img]
+            for img in d['positive']:
+                img = idx_img_reverse[img]
+        
         if logger:
+            print(f"loaded {len(pos_imgs)} positive set images")
+            print(f"loaded {len(neg_imgs)} negative set images")
+            print(f"loaded {len(non_exhaustive)} non-exhaustive set images")
             print("Loaded {} images!".format(len(imgs)))
+            for key, d in class_datasets.items():
+                print('class {} has {} positive and {} negative images'
+                      .format(key, len(d['positive']), len(d['negative'])))
     
-        return idx_img_map
+        return idx_img_map, class_datasets
     
     """
     Helper function: returns idx given image id 
@@ -156,11 +207,15 @@ class LVISData(data.Dataset):
     Returns dict of all annotations ids associated with each index 
     """
     def idx_to_ann(self):
-        idx_ann_map = defaultdict(list)
+        # idx_ann_map = defaultdict(list)
+        idx_ann_map = {}
+        for i in self.idx_img_map.keys():
+            idx_ann_map[i] = []
         
-    
         anns = self.ann_data['annotations']
         imgs = list(self.idx_img_map.values())
+        LVIS_to_custom = dict(zip(self.idx_img_map.values(),
+                                  self.idx_img_map.keys()))
         classes = list(self.classes.values())
         
         counter = 0 
@@ -170,7 +225,8 @@ class LVISData(data.Dataset):
             img_id = ann['image_id']
             ann_id = ann['id']
             if(cat_id in classes) and (img_id in imgs):
-                idx = self.get_key_val(self.idx_img_map, img_id)
+                # idx = self.get_key_val(self.idx_img_map, img_id)
+                idx = LVIS_to_custom[img_id]
                 if idx is not None:
                     idx_ann_map[idx].append(ann_id)
                     counter += 1 
@@ -347,6 +403,7 @@ class LVISData(data.Dataset):
     """
     def get_label(self, idx, classes = None):
          
+        
         ann_ids = self.idx_ann_map.get(idx)
             
         annotations = self.ann_data['annotations']
